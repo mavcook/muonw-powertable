@@ -18,7 +18,10 @@ export interface Instructs {
         customSort?(v1: string, v2: string): number,
         customFilter?(data: Data[], searchPhrase: string): {data: Data[], continue: boolean},
     },
-    dataComponent?: ComponentType<SvelteComponent>,
+    dataComponent?: {
+        component: ComponentType<SvelteComponent>,
+        props: object,
+    }
 }
 
 export interface Data {
@@ -1288,11 +1291,12 @@ onMount(() => {
                                                             />
                                                         {:else if instruct?.parseAs === 'component' && instruct?.dataComponent}
                                                             <svelte:component
-                                                                this={instruct?.dataComponent}
+                                                                this={instruct?.dataComponent.component}
                                                                 rowIndex={index}
                                                                 rowId={record[dataIdKey]}
                                                                 instructKey={instruct.key}
                                                                 value={record[instruct.key]}
+                                                                {...instruct.dataComponent.props}
                                                             />
                                                         {:else if instruct?.parseAs === 'unsafe-html'}
                                                             {@html (record[instruct.key] ?? '')}
