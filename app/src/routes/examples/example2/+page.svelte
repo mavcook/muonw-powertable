@@ -22,7 +22,12 @@ let ptInstructs2: Instructs[] = [
     {key: 'last_name'},
     {key: 'company'},
     {key: 'department'},
-    {key: 'job', parseAs: 'component', dataComponent: <ComponentType<SvelteComponent>>MyComponent}
+    {key: 'job', parseAs: 'component', 
+        dataComponent: {
+            component: <ComponentType<SvelteComponent>>MyComponent,
+            props: {}
+        }
+    }
 ];
 </script>
 

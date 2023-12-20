@@ -103,7 +103,14 @@ The value of `customSort` should be a function that receives two string values (
 
 The value of `customFilter` should be a function that returns a slice of `ptData` after applying a filter. The function will receive the `ptData`.
 
-The `dataComponent` property in `ptInstructs` prop is a Svelte component that can receive, modify, and output the content of a cell. The following variables will be accessible in the component:
+The `dataComponent` property in `ptInstructs` prop is a Svelte component that can receive, modify, and output the content of a cell. The value of the `dataComponent` property is an object containing the followings:
+
+| Property | Type | Default | Description |
+| -------- | ---- | ------- | ----------- |
+| `component` | SvelteComponent | | The Svelte component that renders the cell |
+| `props` | object | | Additional properties to send to the component | 
+
+The following variables will be accessible in the component:
 
 | Variable | Type | Default | Description |
 | -------- | ---- | ------- | ----------- |
@@ -111,6 +118,8 @@ The `dataComponent` property in `ptInstructs` prop is a Svelte component that ca
 | `rowIndex` | number |  | The position of the row relative to the page |
 | `rowId` | number |  | The position of the row relative to the dataset |
 | `instructKey` | string |  | The instruct key of the column |
+
+See an example in the [source code](https://github.com/muonw/muonw-powertable/blob/main/app/src/routes/examples/example2/+page.svelte) of [Example 2: Custom Instructs](https://muonw.github.io/muonw-powertable/examples/example2).
 
 
 The `edit` property in `ptInstructs` prop allows custom representation of the editable data (e.g. in the form of a drop-down menu). If not set, the default component will place the cell data in a `<textarea>` element for editing. The value of the `edit` property is an object containing the followings:
