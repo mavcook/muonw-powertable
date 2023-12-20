@@ -1267,7 +1267,7 @@ onMount(() => {
                             </thead>
                             <tbody>
                                 {#if formattedPageData.length}
-                                    {#each formattedPageData as record, index}
+                                    {#each formattedPageData as record, index (record[dataIdKey])}
                                         <tr data-index={index} data-id={record[dataIdKey]} on:click={(e)=>rowClicked(e, index)} on:dblclick={(e)=>rowDblClicked(e, index)}>
                                             {#each instructs as instruct}
                                                 {#if specialInstructs.hasOwnProperty(instruct?.key)}
