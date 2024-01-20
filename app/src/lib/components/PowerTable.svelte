@@ -1290,6 +1290,7 @@ onMount(() => {
                                                                 on:edit-submit-event={handleSubmittedEdits}
                                                             />
                                                         {:else if instruct?.parseAs === 'component' && instruct?.dataComponent}
+                                                            {#key instruct}
                                                             <svelte:component
                                                                 this={instruct?.dataComponent.component}
                                                                 rowIndex={index}
@@ -1298,6 +1299,7 @@ onMount(() => {
                                                                 value={record[instruct.key]}
                                                                 {...instruct.dataComponent.props}
                                                             />
+                                                            {/key}
                                                         {:else if instruct?.parseAs === 'unsafe-html'}
                                                             {@html (record[instruct.key] ?? '')}
                                                         {:else if instruct?.parseAs === 'html'}
