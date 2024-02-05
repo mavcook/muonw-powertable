@@ -18,7 +18,7 @@ export interface Instructs {
         customSort?(v1: string, v2: string): number,
         customFilter?(data: Data[], searchPhrase: string): {data: Data[], continue: boolean},
     },
-    dataComponent?: {
+    display: {
         component: ComponentType<SvelteComponent>,
         props: object,
     }
@@ -134,6 +134,7 @@ export function getRegexParts(phrase: string) {
 import { onMount, createEventDispatcher } from 'svelte';
 import type { SvelteComponent } from "svelte"
 import DefaultEditComponent from './DefaultEditComponent.svelte';
+import DefaultDisplayComponent from './DefaultDisplayComponent.svelte';
 
 // Props
 export let ptInstructs: Instructs[] = [];
@@ -260,22 +261,6 @@ function initialize(ptInstructs: Instructs[], ptOptions: Options, ptData: Record
 
     data = JSON.parse(JSON.stringify(ptData));
 
-    // Make data type conformable to Record<string,string>
-    data = data.map(row => {
-        Object.keys(row).forEach(key => {
-            // If not a special instruct
-            if (!specialInstructs.hasOwnProperty(key)) {
-                if (row[key] === null) {
-                    row[key] = '';
-                } else if (typeof row[key] === 'object') {
-                    row[key] = JSON.stringify(row[key]);   
-                } else {
-                    row[key] = row[key].toString();
-                }
-            }
-        });
-        return row;
-    });
 
     let tempInstructs: Instructs[] = [];
 
@@ -289,7 +274,8 @@ function initialize(ptInstructs: Instructs[], ptOptions: Options, ptData: Record
                     key: key,
                     title: key,
                     parseAs: 'text',
-                    edit: {component: <ComponentType<SvelteComponent>>DefaultEditComponent, props: {}}
+                    edit: {component: <ComponentType<SvelteComponent>>DefaultEditComponent, props: {}},
+                    display: {component: <ComponentType<SvelteComponent>>DefaultDisplayComponent, props: {}}
                 });
 
                 filterObj[key] = {
@@ -310,6 +296,9 @@ function initialize(ptInstructs: Instructs[], ptOptions: Options, ptData: Record
                 }
                 if (!instruct.hasOwnProperty('edit')) {
                     instruct['edit'] = {component: <ComponentType<SvelteComponent>>DefaultEditComponent, props: {}}
+                }
+                if (!instruct.hasOwnProperty('display')) {
+                    instruct['display'] = {component: <ComponentType<SvelteComponent>>DefaultDisplayComponent, props: {}}
                 }
 
                 tempInstructs.push(instruct);
@@ -1289,23 +1278,17 @@ onMount(() => {
                                                                 {...instruct.edit?.props}
                                                                 on:edit-submit-event={handleSubmittedEdits}
                                                             />
-                                                        {:else if instruct?.parseAs === 'component' && instruct?.dataComponent}
+                                                        {:else}
                                                             {#key instruct}
                                                             <svelte:component
-                                                                this={instruct?.dataComponent.component}
+                                                                this={instruct.display.component}
                                                                 rowIndex={index}
                                                                 rowId={record[dataIdKey]}
                                                                 instructKey={instruct.key}
                                                                 value={record[instruct.key]}
-                                                                {...instruct.dataComponent.props}
+                                                                {...instruct.display.props}
                                                             />
                                                             {/key}
-                                                        {:else if instruct?.parseAs === 'unsafe-html'}
-                                                            {@html (record[instruct.key] ?? '')}
-                                                        {:else if instruct?.parseAs === 'html'}
-                                                            {@html sanitizeHtml(record[instruct.key] ?? '')}
-                                                        {:else}
-                                                            {(record[instruct.key] ?? '')}
                                                         {/if}
                                                     </td>
                                                 {/if}
