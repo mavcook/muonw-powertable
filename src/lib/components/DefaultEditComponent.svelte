@@ -1,31 +1,42 @@
 <script lang="ts">
 import { createEventDispatcher } from 'svelte';
 
-export let instructKey: number;
-export let instructTitle: string;
-export let value: string;
-export let rowIndex: number;
-export let rowId: number;
+import { editCommit, pendingRowEdits, type PTCellReferences } from "./PowerTable.svelte";
 
-const dispatch = createEventDispatcher();
+export let ptCellReferences: PTCellReferences;
 
-function submitEdits(e: Event) {
-	dispatch('edit-submit-event', {
-		rowIndex: rowIndex,
-		domEvent: e
-	});
-}
+let originalCellValue = JSON.parse(JSON.stringify(ptCellReferences.cellValue))
+let isDirty = false
+
+
+editCommit.subscribe((event) => {
+	if (event?.eventName === 'discard' && event?.rowId===ptCellReferences.rowId) {
+		ptCellReferences.cellValue = originalCellValue
+		return
+	}
+
+	if (event && isDirty){ // if event.blah == blah, i should submit my changes
+		// console.log(event, row, 'staging', value)
+
+		$pendingRowEdits[ptCellReferences.rowId][ptCellReferences.instructKey] = ptCellReferences.cellValue
+
+	}
+
+})
+
 
 function adjustHeight(node: HTMLElement) {
 	node.style.height = node.scrollHeight + 'px';
 }
+
+
 </script>
 
 <div data-name="edit-block">
 	<label>
 		<span>
-			<span>{instructTitle}</span>
-		</span><textarea data-name="edit-input" data-key={instructKey} use:adjustHeight>{value}</textarea>
+			<span>{ptCellReferences.instructTitle}</span>
+		</span>
+		<textarea data-name="edit-input" data-key={ptCellReferences.instructKey} use:adjustHeight bind:value={ptCellReferences.cellValue} on:change={() => {console.log('asdfasdfasdf'), isDirty=true}}></textarea>
 	</label>
-	<button data-name="edit-submit" on:click={submitEdits}>✔️</button>
 </div>

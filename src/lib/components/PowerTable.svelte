@@ -1,6 +1,14 @@
 <script context="module" lang="ts">
 import type { ComponentType } from 'svelte';
 
+
+export interface CellComponent {
+    component: ComponentType<SvelteComponent>,
+    props: object,
+    passCellValueAsPropNamed?: string,
+    passPTCellReferences: boolean, // users can set to false so the warning is disabled for passing unused/unexpected props
+}
+
 export interface Instructs {
     key: string,
     title?: string,
@@ -10,18 +18,33 @@ export interface Instructs {
     filterPhrase?: string,
     filterIsRegex?: boolean,
     parseAs?: 'text' | 'html' | 'unsafe-html' | 'component',
-    edit?: {
-        component: ComponentType<SvelteComponent>,
-        props: object,
-    }
+    editCell: CellComponent,
+    displayCell: CellComponent,
+    shouldShowColumn: boolean,
     userFunctions?: {
-        customSort?(v1: string, v2: string): number,
-        customFilter?(data: Data[], searchPhrase: string): {data: Data[], continue: boolean},
+        customSort?(a: unknown, b: unknown): number,
+        customFilter?: {
+            callable: (data: Data[], searchPhrase: string, kitchenSink: object) => {data: Data[], continue: boolean},
+            kitchenSink: object,
+        }
     },
-    display: {
-        component: ComponentType<SvelteComponent>,
-        props: object,
-    }
+
+}
+
+export interface PTCellReferences {
+    instructKey: number;
+    instructTitle: string;
+    cellValue: string;
+    row: object;
+    rowIndex: number;
+    rowId: number;
+    submitEdits: Function;
+}
+
+export interface PTCell {
+    rowId: number;
+    instructKey: string;
+    value: any
 }
 
 export interface Data {
@@ -51,7 +74,7 @@ export interface Options {
     currentPage?: number,
     searchPhrase?: string,
     searchIsRegex?: boolean,
-    checkboxColumn?: boolean,
+    controlCell?: CellComponent,
     translations?: {
         numberFormat?: string,
         search?: string,
@@ -128,10 +151,16 @@ export function getRegexParts(phrase: string) {
     }
     return false;
 }
+import { derived, writable, type Writable } from 'svelte/store';
+export const pendingRowEdits = writable<Record<number, Data>>({})
+export const isEditingRow = writable<Record<number, boolean>>({})
+export const editCommit = writable<object>(null)
+
+
 </script>
 
 <script lang="ts">
-import { onMount, createEventDispatcher } from 'svelte';
+import { onMount, createEventDispatcher, tick } from 'svelte';
 import type { SvelteComponent } from "svelte"
 import DefaultEditComponent from './DefaultEditComponent.svelte';
 import DefaultDisplayComponent from './DefaultDisplayComponent.svelte';
@@ -153,8 +182,26 @@ let specialInstructs = {
         title: '',
         sortable: false,
         filterable: false,
+        shouldShowColumn: true,
     }
 }
+
+
+// editCommit.subscribe(async (event) => {
+
+//     if (event) {
+        
+//         // reset stager, which will notify subscribers
+//         $editStager = {event, edits: {}}
+//         await tick()
+//         // changes should be addded now
+
+//             console.log('edits are:', $editStager.edits)
+        
+
+//         // handleSubmittedEdits(null)
+//     }
+// })
 
 const dispatch = createEventDispatcher();
 
@@ -178,7 +225,6 @@ let options: Options = {
     currentPage: 1,
     searchPhrase: '',
     searchIsRegex: false,
-    checkboxColumn: false,
     translations: {
         numberFormat: 'en-US',
         search: 'Search',
@@ -274,8 +320,9 @@ function initialize(ptInstructs: Instructs[], ptOptions: Options, ptData: Record
                     key: key,
                     title: key,
                     parseAs: 'text',
-                    edit: {component: <ComponentType<SvelteComponent>>DefaultEditComponent, props: {}},
-                    display: {component: <ComponentType<SvelteComponent>>DefaultDisplayComponent, props: {}}
+                    editCell: {component: <ComponentType<SvelteComponent>>DefaultEditComponent, props: {}, passPTCellReferences: true},
+                    displayCell: {component: <ComponentType<SvelteComponent>>DefaultDisplayComponent, props: {}, passPTCellReferences: true},
+                    shouldShowColumn: true,
                 });
 
                 filterObj[key] = {
@@ -294,11 +341,16 @@ function initialize(ptInstructs: Instructs[], ptOptions: Options, ptData: Record
                 if (!instruct.hasOwnProperty('title')) {
                     instruct['title'] = instruct['key'];
                 }
-                if (!instruct.hasOwnProperty('edit')) {
-                    instruct['edit'] = {component: <ComponentType<SvelteComponent>>DefaultEditComponent, props: {}}
+                if (!instruct.hasOwnProperty('editCell')) {
+                    instruct['editCell'] = {
+                        component: <ComponentType<SvelteComponent>>DefaultEditComponent, props: {}, passPTCellReferences: true,
+                    }
                 }
-                if (!instruct.hasOwnProperty('display')) {
-                    instruct['display'] = {component: <ComponentType<SvelteComponent>>DefaultDisplayComponent, props: {}}
+                if (!instruct.hasOwnProperty('displayCell')) {
+                    instruct['displayCell'] = {
+                        component: <ComponentType<SvelteComponent>>DefaultDisplayComponent, props: {},
+                        passPTCellReferences: true,
+                    }
                 }
 
                 tempInstructs.push(instruct);
@@ -340,6 +392,7 @@ function initialize(ptInstructs: Instructs[], ptOptions: Options, ptData: Record
             row = Object.assign({[checkboxKey]: false}, row);
         }
 
+        $pendingRowEdits[index] = $pendingRowEdits[index] || {}
         return row
     });
 
@@ -557,8 +610,10 @@ function applyFilters() {
 
             let correspondingInstruct = instructs.find(d => d.key === key);
 
-            if (typeof (correspondingInstruct?.userFunctions?.customFilter ?? null) === 'function' && correspondingInstruct?.userFunctions?.customFilter !== undefined) {
-                let customFilterResult = correspondingInstruct.userFunctions.customFilter(matchedData, filter.value);
+            if (correspondingInstruct?.userFunctions?.customFilter) {
+                const filterFunction = correspondingInstruct.userFunctions.customFilter.callable
+                const userArgs = correspondingInstruct.userFunctions.customFilter.kitchenSink
+                let customFilterResult = filterFunction(matchedData, filter.value, userArgs);
                 matchedData = customFilterResult.data;
                 customFilterContinue = customFilterResult.continue;
                 filterObj[key].isCustom = !customFilterContinue;
@@ -713,34 +768,71 @@ function updatePageSize() {
     renderTable();
 }
 
-function handleSubmittedEdits(event: CustomEvent){
-    let rowIndex: number = event.detail.rowIndex;
-    let row = data[pageData[rowIndex][dataIdKey]];
-    let rowInputs = (<HTMLInputElement>event.detail.domEvent.target).closest('tr')!.querySelectorAll(`[data-name=edit-input]`);
 
-    for (const cellInput of rowInputs) {
-        let key = (<HTMLInputElement>cellInput)?.dataset?.key;
-        let value = (<HTMLInputElement>cellInput)?.value;
-        if (!key) {
-            alert('Misconfigured edit-component. See console for details.')
-            console.error('Misconfigured edit-component. Add "data-key={instructKey}" to:', cellInput);
-            return;
+function toggleEditMode(rowId: number) {
+
+    $isEditingRow[rowId] = !$isEditingRow[rowId]
+    
+    const pendingEdits = {}
+    for (const [rowId, edits] of Object.entries($pendingRowEdits)) {
+        if (Object.values(edits).length > 0) {
+            pendingEdits[rowId] = edits
         }
-        else if (value == null) {
-            alert('Misconfigured edit-component. See console for details.')
-            console.error(`Misconfigured edit-component. No value found for the "${key}" cell. Make sure the value is bound to:`, cellInput)
-            return;
+    }
+}
+
+export async function submitEdits(event: object, submissionRowId: number) {
+    $editCommit = event
+
+	await Promise.resolve(); // This resolves in the next microtask, allowing Svelte to update the DOM
+	// now all subscribers have had a chance to submit their edits
+
+    if (event?.eventName === 'discard') {
+        $isEditingRow[submissionRowId] = false
+        return
+    }
+	
+    const comittedEdits = {}
+    for (const [rowId, edits] of Object.entries($pendingRowEdits)) {
+        if (Object.values(edits).length > 0) {
+            // for now, limit to only allowing committing the edits for one row at a time
+            if (rowId != submissionRowId) {
+                continue
+            }
+            data[rowId] = {...data[rowId], ...edits}
+            comittedEdits[rowId] = {...edits}
+            // data[rowId][checkboxKey] = false
+            $isEditingRow[rowId] = false
+            $pendingRowEdits[rowId] = {}
+            
+        } else if (rowId == submissionRowId) {
+            // no edits, but user has exited edit mode on this row
+            $isEditingRow[rowId] = false
         }
-        row[key] = value;
     }
 
-    row[checkboxKey] = false;
+    initialize(instructs, options, data);
+}
+
+function _submitEditsHelper(){
+
+    const editedRowIds = []
+    for (const [rowId, edits] of Object.entries($pendingRowEdits)) {
+        if (Object.values(edits).length > 0) {
+            data[rowId] = {...data[rowId], ...edits}
+            data[rowId][checkboxKey] = false
+            $isEditingRow[rowId] = false
+            editedRowIds.push(rowId)
+        }
+    }
+
+    
     initialize(instructs, options, data);
 
-    const userCallback = options?.userFunctions?.editSubmissionCallback;
-    if (userCallback) {
-        userCallback(row);
-    }
+    // const userCallback = options?.userFunctions?.editSubmissionCallback;
+    // if (userCallback) {
+    //     userCallback(row);
+    // }
 }
 
 function rowClicked(e: Event, index: number) {
@@ -1177,6 +1269,40 @@ onMount(() => {
         window.removeEventListener('click', closePopUps);
     }
 });
+
+
+function propsToPassToCellComponent(componentConfig: CellComponent, record: Data, instructs: Instructs, index): Record<string, any> {
+
+    let props: Record<string, any> = {
+        // this: componentConfig.component,
+        ...componentConfig.props,
+    }
+
+    let cellValue = record[instructs.key]
+    if (componentConfig.passPTCellReferences) {
+        props['ptCellReferences'] =  {
+            rowIndex: index,
+            rowId: record[dataIdKey],
+            instructKey: instructs.key,
+            instructTitle: instructs.title,
+            cellValue: cellValue,
+            row: record,
+            submitEdits,
+            toggleEditMode,
+        }
+    }
+
+    if (componentConfig?.passCellValueAsPropNamed) {
+        props[componentConfig.passCellValueAsPropNamed] = cellValue
+    }
+    return props
+}
+
+
+function validInstructs(instr: Instructs[]) {
+    return instr.filter((i) => {return i.shouldShowColumn})
+}
+
 </script>
 
 
@@ -1209,9 +1335,9 @@ onMount(() => {
                                 {/if}
                                 {#if options.headerText}
                                     <tr data-name="titles-tr">
-                                        {#each instructs as instruct}
+                                        {#each validInstructs(instructs) as instruct}
                                             {#if specialInstructs.hasOwnProperty(instruct?.key)}
-                                                {#if instruct?.key === checkboxKey && options.checkboxColumn}
+                                                {#if instruct?.key === checkboxKey && options.controlCell}
                                                     <th data-key={instruct.key} data-sortable={instruct?.sortable}>
                                                         <div data-name="actions-container">
                                                             <button data-name="handle" on:click={toggleMenu}></button>
@@ -1238,9 +1364,9 @@ onMount(() => {
                                 {/if}
                                 {#if options.headerFilters}
                                     <tr data-name="filters-tr">
-                                        {#each instructs as instruct}
+                                        {#each validInstructs(instructs) as instruct}
                                             {#if specialInstructs.hasOwnProperty(instruct?.key)}
-                                                {#if instruct?.key === checkboxKey && options.checkboxColumn}
+                                                {#if instruct?.key === checkboxKey && options.controlCell}
                                                     <th data-key={instruct.key}></th>
                                                 {/if}
                                             {:else}
@@ -1258,38 +1384,32 @@ onMount(() => {
                                 {#if formattedPageData.length}
                                     {#each formattedPageData as record, index (record[dataIdKey])}
                                         <tr data-index={index} data-id={record[dataIdKey]} on:click={(e)=>rowClicked(e, index)} on:dblclick={(e)=>rowDblClicked(e, index)}>
-                                            {#each instructs as instruct}
+                                            {#each validInstructs(instructs) as instruct}
                                                 {#if specialInstructs.hasOwnProperty(instruct?.key)}
-                                                    {#if instruct.key === checkboxKey && options.checkboxColumn}
+                                                    {#if instruct.key === checkboxKey && options.controlCell}
                                                         <td data-key={instruct.key}>
-                                                            <input type="checkbox" bind:checked={data[record[dataIdKey]][checkboxKey]} />
+                                                            <svelte:component
+                                                                this={options.controlCell.component}
+                                                                {...propsToPassToCellComponent(options.controlCell, record, instruct, index)}
+                                                            />
                                                         </td>
                                                     {/if}
                                                 {:else}
                                                     <td data-key={instruct.key}>
-                                                        {#if data[record[dataIdKey]]?.[checkboxKey]}
+                                                        {#key record[dataIdKey] }
+                                                        {#if $isEditingRow[record[dataIdKey]]}
                                                             <svelte:component
-                                                                this={instruct.edit?.component}
-                                                                rowIndex={index}
-                                                                rowId={record[dataIdKey]}
-                                                                instructKey={instruct.key}
-                                                                instructTitle={instruct.title}
-                                                                value={data[record[dataIdKey]][instruct.key]}
-                                                                {...instruct.edit?.props}
-                                                                on:edit-submit-event={handleSubmittedEdits}
+                                                                this={instruct.editCell.component}
+                                                                {...propsToPassToCellComponent(instruct.editCell, record, instruct, index)}
                                                             />
                                                         {:else}
-                                                            {#key instruct}
                                                             <svelte:component
-                                                                this={instruct.display.component}
-                                                                rowIndex={index}
-                                                                rowId={record[dataIdKey]}
-                                                                instructKey={instruct.key}
-                                                                value={record[instruct.key]}
-                                                                {...instruct.display.props}
-                                                            />
-                                                            {/key}
+                                                            this={instruct.displayCell.component}
+                                                            {...propsToPassToCellComponent(instruct.displayCell, record, instruct, index)}
+                                                        />
                                                         {/if}
+
+                                                            {/key}
                                                     </td>
                                                 {/if}
                                             {/each}
@@ -1320,9 +1440,9 @@ onMount(() => {
                             <tfoot>
                                 {#if options.footerFilters}
                                     <tr data-name="filters-tr">
-                                        {#each instructs as instruct}
+                                        {#each validInstructs(instructs) as instruct}
                                             {#if specialInstructs.hasOwnProperty(instruct?.key)}
-                                                {#if instruct?.key === checkboxKey && options.checkboxColumn}
+                                                {#if instruct?.key === checkboxKey && options.controlCell}
                                                     <th data-key={instruct.key}></th>
                                                 {/if}
                                             {:else}
@@ -1337,9 +1457,9 @@ onMount(() => {
                                 {/if}
                                 {#if options.footerText}
                                     <tr data-name="titles-tr">
-                                        {#each instructs as instruct}
+                                        {#each validInstructs(instructs) as instruct}
                                             {#if specialInstructs.hasOwnProperty(instruct?.key)}
-                                                {#if instruct?.key === checkboxKey && options.checkboxColumn}
+                                                {#if instruct?.key === checkboxKey && options.controlCell}
                                                     <th data-key={instruct.key} data-sortable={instruct?.sortable}></th>
                                                 {/if}
                                             {:else}
@@ -1377,7 +1497,8 @@ onMount(() => {
                             {#if $$slots.settings}
                                 <slot name="settings" />
                             {:else}
-                                <button data-name="item" on:click={toggleCheckboxColumn}>{options.checkboxColumn ? options.translations?.checkboxHide : options.translations?.checkboxShow}</button>
+                            <p>wtf is this</p>
+                                <button data-name="item" on:click={toggleCheckboxColumn}>{options.controlCell ? options.translations?.checkboxHide : options.translations?.checkboxShow}</button>
                             {/if}
                         </div>
                     </div>

@@ -5,6 +5,7 @@ import type { Data, Options, Instructs } from '$lib/components/PowerTable.svelte
 import MyComponent from './MyComponent.svelte';
 import NonEditableCell from './NonEditableCell.svelte';
 import type { ComponentType, SvelteComponent } from 'svelte';
+	import DefaultControlCell from '$lib/components/DefaultControlCell.svelte';
 
 let myPowerTable: PowerTable;
 
@@ -21,16 +22,19 @@ ptInstructs = [
     {key: 'company'},
     {
         key: 'department', 
-        edit: {
+        editCell: {
             component: <ComponentType<SvelteComponent>>MyComponent,
-            props: {selectValues: uniqueDepartments}
+            props: {selectValues: uniqueDepartments},
+            passPTCellReferences: true,
         },
+        shouldShowColumn: true
     },
     {
         key: 'job',
-        edit: {
+        editCell: {
             component: <ComponentType<SvelteComponent>>NonEditableCell,
-            props: {}
+            props: {},
+            passPTCellReferences: true,
         },
     }
 ];
@@ -38,7 +42,11 @@ ptInstructs = [
 let ptData: Data[] = data;
 
 let ptOptions: Options = {
-    checkboxColumn: true,
+    controlCell: {
+        component: <ComponentType<SvelteComponent>>DefaultControlCell,
+        props: {},
+        passPTCellReferences: true,
+    },
     segments: {
         'topBar': ['settings', 'search', 'pagination'],
         'pTable': ['table'],

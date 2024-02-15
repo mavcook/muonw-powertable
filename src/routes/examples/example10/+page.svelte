@@ -62,6 +62,7 @@ function mySearch(data: Data[], searchPhrase: string): {data: Data[], continue: 
 }
 
 function myIntRangeFilter(data: Data[], filterPhrase: string): {data: Data[], continue: boolean} {
+    console.log('myIntRangeFilter data', data)
     if (filterPhrase.trim()) {
         let rangeParts = filterPhrase.match(/^([\d ]+)-([\d ]+)$/);
 

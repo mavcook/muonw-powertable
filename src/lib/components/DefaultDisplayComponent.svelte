@@ -1,13 +1,13 @@
 <script lang="ts">
-    export let instructKey: number;
-    export let instructTitle: string;
-    export let value: string;
-    export let rowIndex: number;
-    export let rowId: number;
+
+	import type { PTCellReferences } from "./PowerTable.svelte";
+
+    export let ptCellReferences: PTCellReferences;
+
 </script>
 
-{#if typeof(value) === 'object'}
-{JSON.stringify(value)}
+{#if typeof(ptCellReferences.cellValue) === 'object'}
+    {JSON.stringify(ptCellReferences.cellValue)}
 {:else}
-{value}
+    {ptCellReferences.cellValue}
 {/if}

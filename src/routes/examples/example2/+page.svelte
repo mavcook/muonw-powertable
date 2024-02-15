@@ -22,8 +22,8 @@ let ptInstructs2: Instructs[] = [
     {key: 'last_name'},
     {key: 'company'},
     {key: 'department'},
-    {key: 'job', parseAs: 'component', 
-        dataComponent: {
+    {key: 'job',
+        display: {
             component: <ComponentType<SvelteComponent>>MyComponent,
             props: {}
         }
