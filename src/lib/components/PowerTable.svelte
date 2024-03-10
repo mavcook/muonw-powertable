@@ -1382,7 +1382,7 @@ function validInstructs(instr: Instructs[]) {
                             </thead>
                             <tbody>
                                 {#if formattedPageData.length}
-                                    {#each formattedPageData as record, index (record[dataIdKey])}
+                                    {#each formattedPageData as record, index (record)}
                                         <tr data-index={index} data-id={record[dataIdKey]} on:click={(e)=>rowClicked(e, index)} on:dblclick={(e)=>rowDblClicked(e, index)}>
                                             {#each validInstructs(instructs) as instruct}
                                                 {#if specialInstructs.hasOwnProperty(instruct?.key)}
